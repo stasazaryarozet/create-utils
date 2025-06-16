@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""
+create - утилита для создания нового репозитория GitHub и локального проекта
+
+SYNOPSIS
+    create [имя_проекта]
+
+DESCRIPTION
+    Создает новый репозиторий на GitHub и соответствующую директорию проекта.
+    Если имя проекта не указано, генерируется UUID.
+    
+    Связанные утилиты:
+        destroy(1) - удаление репозитория и файлов проекта
+
+CONFIGURATION
+    Конфигурационный файл находится в ~/.config/create/config.yaml
+    По умолчанию:
+        projects_dir: ~/iCloud/Projects
+        ide: cursor
+        github_token: ваш_токен_github
+"""
+
+import os
+import sys
+import uuid
+import yaml
+import subprocess
+from pathlib import Path
+from typing import Optional
+from github import Github
+from github.GithubException import GithubException
+
+def check_dependency(cmd: str, name: str):
+    """
+    Проверяет наличие внешней зависимости (git, IDE).
+    Завершает выполнение с ошибкой, если не найдена.
+    """
+    from shutil import which
+    if which(cmd) is None:
+        print(f"Ошибка: {name} не найдена в PATH. Пожалуйста, установите {name}.", file=sys.stderr)
+        sys.exit(1)
+
+def load_config() -> dict:
+    """
+    Загружает конфигурацию из файла.
+    Возвращает словарь с настройками.
+    """
+    config_path = Path.home() / '.config' / 'create' / 'config.yaml'
+    default_config = {
+        'projects_dir': str(Path.home() / 'iCloud' / 'Projects'),
+        'ide': 'cursor',
+        'github_token': ''  # Требуется заполнить токен GitHub
+    }
+    if not config_path.exists():
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(config_path, 'w') as f:
+            yaml.dump(default_config, f)
+        print("Создан конфигурационный файл. Пожалуйста, добавьте ваш GitHub токен в ~/.config/create/config.yaml")
+        sys.exit(1)
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+        if not config.get('github_token'):
+            print("Ошибка: GitHub токен не найден в конфигурационном файле")
+            sys.exit(1)
+        return config
+
+def create_repo(name: str, github_token: str) -> str:
+    """
+    Создаёт репозиторий на GitHub с заданным именем.
+    Возвращает URL для клонирования.
+    """
+    try:
+        g = Github(github_token)
+        user = g.get_user()
+        repo = user.create_repo(
+            name=name,
+            description=f"Project {name}",
+            has_issues=True,
+            has_wiki=True,
+            has_downloads=True,
+            auto_init=False
+        )
+        return repo.clone_url
+    except GithubException as e:
+        print(f"Ошибка при создании репозитория на GitHub: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def create_local_project(name: str, projects_dir: str, repo_url: str) -> None:
+    """
+    Создаёт локальную директорию проекта, инициализирует git, добавляет remote и первый коммит.
+    """
+    projects_dir = os.path.expanduser(projects_dir)
+    project_path = Path(projects_dir) / name
+    project_path.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['git', 'init'], cwd=project_path)
+    subprocess.run(['git', 'branch', '-M', 'main'], cwd=project_path)
+    subprocess.run(['git', 'remote', 'add', 'origin', repo_url], cwd=project_path)
+    with open(project_path / '.gitignore', 'w') as f:
+        f.write('''# Python\n__pycache__/\n*.py[cod]\n*$py.class\n*.so\n.Python\nenv/\nbuild/\ndevelop-eggs/\ndist/\ndownloads/\neggs/\n.eggs/\nlib/\nlib64/\nparts/\nsdist/\nvar/\n*.egg-info/\n.installed.cfg\n*.egg\n\n# IDEs\n.idea/\n.vscode/\n*.swp\n*.swo\n\n# OS\n.DS_Store\n.DS_Store?\n._*\n.Spotlight-V100\n.Trashes\nehthumbs.db\nThumbs.db\n''')
+    with open(project_path / 'README.md', 'w') as f:
+        f.write(f'# {name}\n\nПроект создан с помощью утилиты create.\n')
+    subprocess.run(['git', 'add', '.'], cwd=project_path)
+    subprocess.run(['git', 'commit', '-m', 'Initial commit'], cwd=project_path)
+    subprocess.run(['git', 'push', '-u', 'origin', 'main'], cwd=project_path)
+
+def open_in_ide(project_path: str, ide: str) -> None:
+    """
+    Открывает проект в указанной IDE.
+    """
+    check_dependency(ide, f'IDE {ide}')
+    subprocess.run([ide, project_path])
+
+def main():
+    # Проверка зависимостей
+    check_dependency('git', 'git')
+    # Получение имени проекта
+    project_name = sys.argv[1] if len(sys.argv) > 1 else str(uuid.uuid4())
+    config = load_config()
+    try:
+        repo_url = create_repo(project_name, config['github_token'])
+        create_local_project(project_name, config['projects_dir'], repo_url)
+        project_path = os.path.expanduser(os.path.join(config['projects_dir'], project_name))
+        open_in_ide(project_path, config['ide'])
+        print(f"Проект {project_name} успешно создан!")
+    except Exception as e:
+        print(f"Ошибка при создании проекта: {e}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == '__main__':
+    main() 

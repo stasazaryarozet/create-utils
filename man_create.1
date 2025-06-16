@@ -1,0 +1,20 @@
+.TH CREATE 1 "Июнь 2024" "v1.0" "User Commands"
+.SH NAME
+create \- создать новый репозиторий GitHub и локальный проект
+.SH SYNOPSIS
+.B create
+[имя_проекта]
+.SH DESCRIPTION
+.B create
+создаёт новый репозиторий на GitHub и соответствующую директорию проекта в директории проектов.
+Если имя проекта не указано, используется UUID.
+
+Конфигурация берётся из ~/.config/create/config.yaml.
+
+Связанные утилиты: см. destroy(1).
+.SH FILES
+~/.config/create/config.yaml
+.SH SEE ALSO
+destroy(1)
+.SH AUTHOR
+Azarya Rozet 
